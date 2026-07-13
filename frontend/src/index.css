@@ -1,0 +1,55 @@
+:root {
+  --bg: #17181d;
+  --bubble-assistant: #1f2128;
+  --bubble-assistant-line: #2c2f39;
+  --bubble-user: #ff5a36;
+  --bubble-user-text: #fff8f5;
+  --text-hi: #f3f1ea;
+  --text-lo: #90939f;
+  --input-bg: #1f2128;
+  --input-line: #2c2f39;
+  --accent: #ff5a36;
+  --accent-hover: #ff7452;
+  --error: #e14953;
+  --error-bg: rgba(225, 73, 83, 0.12);
+
+  --display: 'Space Grotesk', system-ui, sans-serif;
+  --sans: 'Inter', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+
+  font: 16px/1.5 var(--sans);
+  color-scheme: dark;
+  color: var(--text-lo);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1, h2, h3 {
+  color: var(--text-hi);
+  font-family: var(--display);
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
