@@ -22,7 +22,10 @@ app = FastAPI(title="Prompt-to-Image API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ideal-octo-bassoon.vercel.app",
+    ],
     allow_methods=["POST"],
     allow_headers=["*"],
 )
