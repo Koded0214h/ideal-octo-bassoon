@@ -26,7 +26,7 @@ app.add_middleware(
         "http://localhost:5173",
         "https://ideal-octo-bassoon.vercel.app",
     ],
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -37,10 +37,22 @@ SIZE_MAP = {
     "portrait": "1024x1536",
 }
 
+MODELS = {
+    "gpt-image-1-mini": "GPT Image 1 Mini",
+    "gpt-image-1": "GPT Image 1",
+    "gpt-image-1.5": "GPT Image 1.5",
+    "gpt-image-2": "GPT Image 2",
+    "gpt-image-2.5-flare": "GPT Image 2.5 Flare",
+    "gpt-image-2.5-sunburst": "GPT Image 2.5 Sunburst",
+    "chatgpt-image-latest": "ChatGPT Image (latest)",
+}
+DEFAULT_MODEL = "gpt-image-1-mini"
+
 
 class GenerateRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
     size: str = "square"
+    model: str = DEFAULT_MODEL
 
 
 class GenerateResponse(BaseModel):
@@ -50,10 +62,11 @@ class GenerateResponse(BaseModel):
 @app.post("/api/generate", response_model=GenerateResponse)
 def generate_image(req: GenerateRequest):
     size_key = req.size if req.size in SIZES else "square"
+    model = req.model if req.model in MODELS else DEFAULT_MODEL
 
     try:
         result = client.images.generate(
-            model="gpt-image-1-mini",
+            model=model,
             prompt=req.prompt,
             size=SIZE_MAP[size_key],
             n=1,
@@ -65,6 +78,11 @@ def generate_image(req: GenerateRequest):
 
     image_b64 = result.data[0].b64_json
     return GenerateResponse(image_base64=image_b64)
+
+
+@app.get("/api/models")
+def list_models():
+    return {"models": [{"id": k, "label": v} for k, v in MODELS.items()], "default": DEFAULT_MODEL}
 
 
 @app.get("/api/health")

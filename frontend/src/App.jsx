@@ -94,6 +94,8 @@ function AssistantBubble({ message, onDownload }) {
 function App() {
   const [prompt, setPrompt] = useState('')
   const [size, setSize] = useState('square')
+  const [models, setModels] = useState([])
+  const [model, setModel] = useState('')
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState([])
 
@@ -103,6 +105,16 @@ function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages])
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/models`)
+      .then((res) => res.json())
+      .then((data) => {
+        setModels(data.models || [])
+        setModel(data.default || data.models?.[0]?.id || '')
+      })
+      .catch(() => {})
+  }, [])
 
   function autoResize() {
     const el = textareaRef.current
@@ -134,7 +146,7 @@ function App() {
       const res = await fetch(`${API_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: trimmed, size }),
+        body: JSON.stringify({ prompt: trimmed, size, model }),
       })
 
       if (!res.ok) {
@@ -202,6 +214,22 @@ function App() {
           placeholder="Describe an image to generate..."
           rows={1}
         />
+        {models.length > 0 && (
+          <div className="size-select">
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              aria-label="Image model"
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="size-select-icon" aria-hidden="true" />
+          </div>
+        )}
         <div className="size-select">
           <select
             value={size}
