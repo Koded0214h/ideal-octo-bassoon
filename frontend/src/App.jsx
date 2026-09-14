@@ -1,9 +1,40 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowUp, ChevronDown, Download } from 'lucide-react'
+import { ArrowUp, ChevronDown, Download, FileText, Paperclip, X } from 'lucide-react'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+
+const MAX_IMAGES = 4
+const MAX_DOCS = 4
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_DOC_BYTES = 15 * 1024 * 1024
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+const DOC_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'application/json',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]
+const DOC_EXTENSIONS = ['.pdf', '.txt', '.md', '.csv', '.json', '.docx']
+const ACCEPT_ATTR = [...IMAGE_TYPES, ...DOC_TYPES, ...DOC_EXTENSIONS].join(',')
+
+function classifyFile(file) {
+  if (IMAGE_TYPES.includes(file.type)) return 'image'
+  if (DOC_TYPES.includes(file.type)) return 'document'
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+  if (DOC_EXTENSIONS.includes(ext)) return 'document'
+  return null
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const SIZES = {
   square: { label: 'Square', dims: '1024×1024' },
@@ -30,6 +61,28 @@ function slugify(text) {
 let nextId = 1
 function makeId() {
   return nextId++
+}
+
+function UserBubble({ message }) {
+  return (
+    <div className="bubble user">
+      {message.attachments?.length > 0 && (
+        <div className="attachment-strip">
+          {message.attachments.map((att, i) =>
+            att.kind === 'image' ? (
+              <img key={i} src={att.previewUrl} alt="" className="attachment-thumb" />
+            ) : (
+              <div key={i} className="doc-chip">
+                <FileText size={14} strokeWidth={2} />
+                <span>{att.file.name}</span>
+              </div>
+            )
+          )}
+        </div>
+      )}
+      {message.text}
+    </div>
+  )
 }
 
 function TypingDots() {
@@ -98,9 +151,12 @@ function App() {
   const [model, setModel] = useState('')
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState([])
+  const [attachments, setAttachments] = useState([])
+  const [attachError, setAttachError] = useState('')
 
   const textareaRef = useRef(null)
   const bottomRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -116,6 +172,85 @@ function App() {
       .catch(() => {})
   }, [])
 
+  function addFiles(fileList) {
+    const incoming = Array.from(fileList || [])
+    if (incoming.length === 0) return
+
+    setAttachError('')
+    const accepted = []
+    for (const file of incoming) {
+      const kind = classifyFile(file)
+      if (!kind) {
+        setAttachError(`${file.name}: unsupported file type.`)
+        continue
+      }
+      const limit = kind === 'image' ? MAX_IMAGE_BYTES : MAX_DOC_BYTES
+      if (file.size > limit) {
+        setAttachError(`${file.name} is over the ${formatFileSize(limit)} limit.`)
+        continue
+      }
+      accepted.push({
+        file,
+        kind,
+        previewUrl: kind === 'image' ? URL.createObjectURL(file) : null,
+      })
+    }
+
+    setAttachments((prev) => {
+      let combined = [...prev, ...accepted]
+      const imageCount = combined.filter((a) => a.kind === 'image').length
+      const docCount = combined.filter((a) => a.kind === 'document').length
+
+      if (imageCount > MAX_IMAGES) {
+        setAttachError(`You can attach up to ${MAX_IMAGES} images.`)
+        let seen = 0
+        combined = combined.filter((a) => {
+          if (a.kind !== 'image') return true
+          seen += 1
+          if (seen > MAX_IMAGES) {
+            if (a.previewUrl) URL.revokeObjectURL(a.previewUrl)
+            return false
+          }
+          return true
+        })
+      }
+      if (docCount > MAX_DOCS) {
+        setAttachError(`You can attach up to ${MAX_DOCS} documents.`)
+        let seen = 0
+        combined = combined.filter((a) => {
+          if (a.kind !== 'document') return true
+          seen += 1
+          return seen <= MAX_DOCS
+        })
+      }
+      return combined
+    })
+  }
+
+  function removeAttachment(index) {
+    setAttachments((prev) => {
+      const next = [...prev]
+      const [removed] = next.splice(index, 1)
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+      return next
+    })
+  }
+
+  function handleFileInputChange(e) {
+    addFiles(e.target.files)
+    e.target.value = ''
+  }
+
+  function handlePaste(e) {
+    const files = Array.from(e.clipboardData?.files || [])
+    if (files.length > 0) addFiles(files)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    addFiles(e.dataTransfer?.files)
+  }
+
   function autoResize() {
     const el = textareaRef.current
     if (!el) return
@@ -130,23 +265,33 @@ function App() {
 
     const userId = makeId()
     const assistantId = makeId()
+    const pendingAttachments = attachments
 
     setMessages((m) => [
       ...m,
-      { id: userId, role: 'user', kind: 'text', text: trimmed },
+      { id: userId, role: 'user', kind: 'text', text: trimmed, attachments: pendingAttachments },
       { id: assistantId, role: 'assistant', kind: 'loading' },
     ])
     setPrompt('')
+    setAttachments([])
+    setAttachError('')
     setLoading(true)
     requestAnimationFrame(autoResize)
 
     const startedAt = Date.now()
 
     try {
+      const formData = new FormData()
+      formData.append('prompt', trimmed)
+      formData.append('size', size)
+      formData.append('model', model)
+      pendingAttachments.forEach((att) =>
+        formData.append(att.kind === 'image' ? 'images' : 'documents', att.file)
+      )
+
       const res = await fetch(`${API_URL}/api/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: trimmed, size, model }),
+        body: formData,
       })
 
       if (!res.ok) {
@@ -201,8 +346,55 @@ function App() {
   const isIdle = messages.length === 0
 
   const composerForm = (
-    <form className="composer" onSubmit={handleSubmit}>
+    <form
+      className="composer"
+      onSubmit={handleSubmit}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleDrop}
+    >
+      {attachments.length > 0 && (
+        <div className="attachment-preview-row">
+          {attachments.map((att, i) => (
+            <div key={i} className={att.kind === 'image' ? 'attachment-preview' : 'attachment-preview doc'}>
+              {att.kind === 'image' ? (
+                <img src={att.previewUrl} alt="" />
+              ) : (
+                <div className="doc-chip">
+                  <FileText size={14} strokeWidth={2} />
+                  <span>{att.file.name}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                className="attachment-remove"
+                onClick={() => removeAttachment(i)}
+                aria-label="Remove attachment"
+              >
+                <X size={12} strokeWidth={2.5} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {attachError && <div className="attach-error">{attachError}</div>}
       <div className="composer-row">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPT_ATTR}
+          multiple
+          hidden
+          onChange={handleFileInputChange}
+        />
+        <button
+          type="button"
+          className="attach-btn"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach files"
+          title="Attach images or documents"
+        >
+          <Paperclip size={17} strokeWidth={2.25} />
+        </button>
         <textarea
           ref={textareaRef}
           value={prompt}
@@ -211,7 +403,12 @@ function App() {
             autoResize()
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Describe an image to generate..."
+          onPaste={handlePaste}
+          placeholder={
+            attachments.length > 0
+              ? 'Describe how to use these files...'
+              : 'Describe an image to generate...'
+          }
           rows={1}
         />
         {models.length > 0 && (
@@ -287,7 +484,7 @@ function App() {
                     transition={{ duration: 0.25 }}
                   >
                     {message.role === 'user' ? (
-                      <div className="bubble user">{message.text}</div>
+                      <UserBubble message={message} />
                     ) : (
                       <AssistantBubble message={message} onDownload={handleDownload} />
                     )}
